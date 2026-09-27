@@ -1,0 +1,27 @@
+{
+  "name": "ansidither",
+  "version": "0.1.0",
+  "description": "Render PNG images as terminal art with colour dithering",
+  "type": "module",
+  "bin": {
+    "ansidither": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "png",
+    "terminal",
+    "ansi",
+    "dithering",
+    "image",
+    "cli"
+  ],
+  "license": "MIT",
+  "files": [
+    "src"
+  ]
+}
