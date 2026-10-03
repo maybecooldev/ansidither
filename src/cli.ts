@@ -24,7 +24,8 @@ Options
   -h, --height <n>    output height in rows; default keeps the aspect ratio
   -m, --mode <mode>   color (default) or ascii
   -d, --dither <how>  floyd (default), atkinson, ordered, or none
-  -l, --levels <n>    palette size (default 6 grayscale, 4 per channel for colour)
+  -l, --levels <n>    palette size, 2-6 in colour (default 4) or 2-256 in
+                      grayscale (default 6)
   -g, --grayscale     force the grayscale ramp
   -b, --background <hex>  composite onto this colour (default 000000)
   -i, --invert        for terminals with a light background
@@ -39,7 +40,7 @@ type Options = {
 	height: number | null;
 	mode: Mode;
 	dither: DitherMethod;
-	levels: number;
+	levels: number | null;
 	grayscale: boolean;
 	background: string;
 	invert: boolean;
@@ -51,7 +52,7 @@ type Options = {
 function parseArgs(argv: string[]): Options {
 	const o: Options = {
 		files: [], width: 80, height: null, mode: 'color', dither: 'floyd',
-		levels: 0, grayscale: false, background: '000000', invert: false,
+		levels: null, grayscale: false, background: '000000', invert: false,
 		color: process.env.NO_COLOR ? false : true,
 		out: null, help: false,
 	};
@@ -131,6 +132,18 @@ function main(): void {
 		fail(`unknown dither "${o.dither}"`);
 	}
 
+	// The colour cube holds levels^3 entries, all of which have to fit the
+	// Uint8Array of palette indices that dither() fills in; the grayscale ramp
+	// divides by levels-1, so 1 would be a division by zero. Both bounds are
+	// what keep every SGR component an integer in 0..255 and stop nearestIndex
+	// from turning into a per-pixel scan over a huge palette.
+	const useGray = o.grayscale || o.mode === 'ascii';
+	const levels = o.levels ?? (useGray ? 6 : 4);
+	const maxLevels = useGray ? 256 : 6;
+	if (!Number.isInteger(levels) || levels < 2 || levels > maxLevels) {
+		fail(`levels must be an integer between 2 and ${maxLevels}`);
+	}
+
 	let bytes: Buffer;
 	try {
 		bytes = readFileSync(file);
@@ -160,8 +173,7 @@ function main(): void {
 	const scaled = resize(bitmap, o.width, targetHeight);
 	const rgb = flatten(scaled, background);
 
-	const useGray = o.grayscale || o.mode === 'ascii';
-	const palette = useGray ? grayRamp(o.levels || 6) : rgbCube(o.levels || 4);
+	const palette = useGray ? grayRamp(levels) : rgbCube(levels);
 
 	// dither() always works in RGB, so a grayscale request is widened here.
 	const source = useGray ? triple(toGray(rgb)) : rgb;

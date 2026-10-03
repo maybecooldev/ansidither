@@ -57,6 +57,14 @@ ansidither image.png -o out.txt           # write to a file
 `--no-color` forces plain output. `--invert` is for terminals with a light
 background, where the default ramp reads backwards.
 
+`-l` takes a palette size between **2 and 6** in colour (default 4, so 64
+colours) and between **2 and 256** in grayscale (default 6). The colour bound is
+not arbitrary: the palette is indexed through a byte per pixel, so a larger cube
+would wrap around and quietly paint the wrong colours, and each extra level also
+costs a full palette scan per pixel. Grayscale gets a much higher ceiling
+because its palette is a single ramp rather than a cube. Anything outside those
+ranges is rejected rather than clamped, so a typo is never silently ignored.
+
 ## Dithering
 
 The terminal can show any colour, so this dithers to a deliberately small
@@ -104,6 +112,11 @@ committed as binaries, so each test can state exactly the colour type, bit depth
 and filter it wants, and the repository stays free of opaque blobs. The filter
 tests hand-check the arithmetic by hand, including the Paeth case where the
 predictor picks the pixel above rather than the one to the left.
+
+`test/cli.test.ts` spawns the real binary rather than importing it, so it covers
+the flag parsing and exit codes end to end — the levels bounds above are all
+enforced there, along with the checks that a rejected flag prints one clean line
+instead of a stack trace.
 
 ## Limits
 
