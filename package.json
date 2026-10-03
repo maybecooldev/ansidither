@@ -4,10 +4,10 @@
   "description": "Render PNG images as terminal art with colour dithering",
   "type": "module",
   "bin": {
-    "ansidither": "src/cli.ts"
+    "ansidither": "src/run.js"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.15"
   },
   "scripts": {
     "test": "node --test test/"

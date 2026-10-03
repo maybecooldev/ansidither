@@ -9,6 +9,29 @@ $ ansidither plasma.png -w 60
 No dependencies. PNG decoding is built on Node's own `zlib`, so this is a
 `git clone` and go — no `node_modules`, no build step, nothing to compile.
 
+Node 22.15 or newer is required either way; that is the version that can
+strip TypeScript types from a `node_modules` install.
+
+## Install
+
+From a checkout, run the CLI in place:
+
+```sh
+./src/cli.ts image.png
+```
+
+Or install it as a command from that checkout:
+
+```sh
+npm install -g .
+ansidither image.png
+```
+
+There is still nothing to build: the installed `ansidither` is a small
+JavaScript launcher that hands `src/cli.ts` to Node's own type stripper. Node
+prints an `ExperimentalWarning` about that API on each run; it is noise from
+Node, not a failure, and the exit code is unaffected.
+
 ## Why half-blocks
 
 Colour mode draws with `▀` (UPPER HALF BLOCK), which paints the foreground
