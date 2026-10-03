@@ -2,12 +2,69 @@
 
 Turns a PNG into terminal art, with colour dithering.
 
-```
-$ ansidither plasma.png -w 60
+```sh
+$ node src/cli.ts plasma.png -w 60
 ```
 
-No dependencies. PNG decoding is built on Node's own `zlib`, so this is a
-`git clone` and go — no `node_modules`, no build step, nothing to compile.
+No dependencies. PNG decoding is built on Node's own `zlib`, so there is
+nothing to install and nothing to compile: no `node_modules`, no build step.
+The CLI is TypeScript run directly, so it needs a Node with built-in type
+stripping — a recent Node 22 or newer. `package.json` declares the supported
+range in `engines`; the commands below are verified on Node 26.
+
+## Install
+
+ansidither is not published to npm, so there is nothing to install globally
+yet. Clone the repo and run the CLI in place:
+
+```sh
+git clone https://github.com/maybecooldev/ansidither.git
+cd ansidither
+node src/cli.ts image.png
+```
+
+Invoking it through `node` is deliberate. `src/cli.ts` carries a `#!/usr/bin/env
+node` shebang, but it is committed without the executable bit set, so
+`./src/cli.ts` from a fresh clone gives "permission denied" on current `main`.
+Running it via `node` works everywhere and does not depend on that.
+
+There is no `npm install` step: the package has no dependencies, so `npm test`
+runs straight from a clean checkout.
+
+## Use
+
+```sh
+node src/cli.ts image.png                      # 80 columns, colour, Floyd-Steinberg
+node src/cli.ts image.png -w 120               # wider
+node src/cli.ts image.png -h 40                # force a row count
+node src/cli.ts image.png -m ascii             # no colour, for logs and plain text
+node src/cli.ts image.png -d atkinson          # grainier, keeps local contrast
+node src/cli.ts image.png -d none              # flat quantisation, no error diffusion
+node src/cli.ts image.png -g -l 8              # grayscale, 8 levels
+node src/cli.ts image.png -b 1a1a1a -i         # composite on light grey, inverted
+node src/cli.ts image.png -o out.txt           # write to a file
+```
+
+`--no-color` forces plain output. `--invert` is for terminals with a light
+background, where the default ramp reads backwards.
+
+### Levels
+
+`-l` sets the palette size, and the two modes accept different ranges:
+
+| Mode | Accepted | Default |
+|---|---|---|
+| Colour (`levels` cubed, so `-l 6` is 216 colours) | 2-6 | 4 |
+| Grayscale (`-g`, or `-m ascii`) | 2-256 | 6 |
+
+Colour is bounded at 6 because the palette is stored as one byte per pixel, so
+7 or more silently overflows it and produces wrong colours rather than an
+error. Grayscale takes a much wider range because a ramp is a single channel.
+
+Anything outside those ranges, or a non-integer like `-l 5.5`, should be
+rejected with a clear error instead of rendering. That guard is not in place
+yet: today `-l 5` in colour mode emits fractional escape codes such as
+`38;2;63.75;...`, which no terminal can display. Stick to the ranges above.
 
 ## Why half-blocks
 
@@ -16,23 +73,6 @@ colour in the top half of a cell and the background in the bottom. That packs
 two vertical pixels into one character, and because terminal cells are about
 twice as tall as they are wide, a square image needs half as many rows as
 columns. The aspect ratio comes out right without any fudge factor.
-
-## Use
-
-```sh
-ansidither image.png                      # 80 columns, colour, Floyd-Steinberg
-ansidither image.png -w 120               # wider
-ansidither image.png -h 40                # force a row count
-ansidither image.png -m ascii             # no colour, for logs and plain text
-ansidither image.png -d atkinson          # grainier, keeps local contrast
-ansidither image.png -d none              # flat quantisation, no error diffusion
-ansidither image.png -g -l 8              # grayscale, 8 levels
-ansidither image.png -b 1a1a1a -i         # composite on light grey, inverted
-ansidither image.png -o out.txt           # write to a file
-```
-
-`--no-color` forces plain output. `--invert` is for terminals with a light
-background, where the default ramp reads backwards.
 
 ## Dithering
 
@@ -43,16 +83,17 @@ error diffusion reconstructs the rest.
 | Method | Behaviour |
 |---|---|
 | `floyd` | Floyd-Steinberg. The default; smooth, slightly soft. |
-| `atkinson` | Discards a third of the error each step. Sharper and grainier, never smears. |
+| `atkinson` | Discards a quarter of the error each step. Sharper and grainier, never smears. |
 | `ordered` | Bayer 8x8 threshold matrix. Fast, regular, no error accumulation. |
 | `none` | Straight nearest colour. Bands visibly, but produces the smallest output. |
 
-Dithering costs bytes. A 60-column image is roughly 32 KB with `floyd` and
-8 KB with `none`, because error diffusion makes neighbouring cells differ and
-each colour change emits a new escape sequence. Escape codes are only written
-when the colour actually changes, and a cell whose top and bottom halves are
-the same colour collapses to one code, but a heavily dithered image will still
-be verbose. If size matters more than smoothness, use `none` or `ordered`.
+Dithering costs bytes. On a photographic image, a 60-column render is about
+47 KB with `floyd` and about 14 KB with `none`, because error diffusion makes
+neighbouring cells differ and each colour change emits a new escape sequence.
+Escape codes are only written when the colour actually changes, and a cell
+whose top and bottom halves are the same colour collapses to one code, but a
+heavily dithered image will still be verbose. If size matters more than
+smoothness, use `none` or `ordered`.
 
 ## PNG support
 
@@ -71,11 +112,15 @@ one, re-saving without interlacing fixes it.
 npm test
 ```
 
-39 tests. The PNG fixtures are built in code by `test/png-builder.ts` rather than
+The suite covers PNG decoding across every supported colour type and bit depth,
+each scanline filter including the Paeth case where the predictor picks the
+pixel above rather than the one to the left, the rejection paths for corrupt
+and unsupported files, resizing and flattening, palette construction, all four
+dither methods, and rendering in both modes.
+
+The PNG fixtures are built in code by `test/png-builder.ts` rather than
 committed as binaries, so each test can state exactly the colour type, bit depth
-and filter it wants, and the repository stays free of opaque blobs. The filter
-tests hand-check the arithmetic by hand, including the Paeth case where the
-predictor picks the pixel above rather than the one to the left.
+and filter it wants, and the repository stays free of opaque blobs.
 
 ## Limits
 
