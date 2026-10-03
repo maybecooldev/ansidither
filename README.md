@@ -71,7 +71,12 @@ one, re-saving without interlacing fixes it.
 npm test
 ```
 
-39 tests. The PNG fixtures are built in code by `test/png-builder.ts` rather than
+The suite covers PNG decoding across every supported colour type and bit
+depth, each scanline filter, the rejection paths for corrupt and unsupported
+files, resizing and flattening, palette construction, all four dither methods,
+and rendering in both modes.
+
+The PNG fixtures are built in code by `test/png-builder.ts` rather than
 committed as binaries, so each test can state exactly the colour type, bit depth
 and filter it wants, and the repository stays free of opaque blobs. The filter
 tests hand-check the arithmetic by hand, including the Paeth case where the
