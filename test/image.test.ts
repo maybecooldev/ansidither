@@ -15,6 +15,18 @@ function solid(w: number, h: number, rgba: [number, number, number, number]) {
 	return b;
 }
 
+/**
+ * Drop every well-formed escape sequence and report what brackets are left.
+ *
+ * Asserting that an escape is absent is not enough on its own: a colour code
+ * that lost its leading ESC byte still reads as a plausible looking string and
+ * sails through a `doesNotMatch(out, /\[/)`. So strip the good sequences first
+ * and assert that no `[` survives what is left.
+ */
+function strayBrackets(out: string): string {
+	return out.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 test('resize to the same size is a no-op', () => {
 	const src = solid(4, 4, [10, 20, 30, 255]);
 	const out = resize(src, 4, 4);
@@ -151,7 +163,9 @@ test('ascii mode renders one row per pixel', () => {
 	const d = dither(Float32Array.from(rgb), w, h, grayRamp(4), 'floyd');
 	const out = render(d, { mode: 'ascii', color: false, invert: false });
 	assert.equal(out.split('\n').length, 20);
-	assert.doesNotMatch(out, /\[/);
+	// No escape byte at all, and nothing left that looks like one.
+	assert.doesNotMatch(out, /\x1b/);
+	assert.doesNotMatch(strayBrackets(out), /\[/);
 });
 
 test('no-color output contains no escape codes at all', () => {
@@ -160,7 +174,8 @@ test('no-color output contains no escape codes at all', () => {
 	const d = dither(Float32Array.from(rgb), w, h, rgbCube(4), 'floyd');
 	for (const mode of ['color', 'ascii'] as const) {
 		const out = render(d, { mode, color: false, invert: false });
-		assert.doesNotMatch(out, /\[/, `${mode} leaked colour`);
+		assert.doesNotMatch(out, /\x1b/, `${mode} leaked colour`);
+		assert.doesNotMatch(strayBrackets(out), /\[/, `${mode} leaked a truncated colour code`);
 	}
 });
 
@@ -169,7 +184,51 @@ test('colour output always ends with a reset', () => {
 	const rgb = new Float32Array(w * h * 3).fill(90);
 	const d = dither(Float32Array.from(rgb), w, h, rgbCube(4), 'floyd');
 	const out = render(d, { mode: 'color', color: true, invert: false });
-	assert.ok(out.endsWith('[0m'));
+	assert.ok(out.endsWith(`\x1b[0m`), `got ${JSON.stringify(out.slice(-8))}`);
+});
+
+test('colour mode emits complete escapes, not bare brackets', () => {
+	// A flat colour is the degenerate case where both halves of a cell are the
+	// same, so the renderer takes the single background code branch.
+	const d = dither(flatten(solid(4, 4, [170, 0, 0, 255]), [0, 0, 0] as RGB), 4, 4, rgbCube(4), 'floyd');
+	const out = render(d, { mode: 'color', color: true, invert: false });
+
+	// The escape byte has to be *present*. Asserting only that an escape is
+	// absent is what let the default mode ship broken.
+	assert.ok(out.startsWith('\x1b['), `expected a leading escape, got ${JSON.stringify(out.slice(0, 20))}`);
+	assert.match(out, /\x1b\[48;2;\d+;\d+;\d+m/);
+	assert.doesNotMatch(strayBrackets(out), /\[/);
+});
+
+test('a cell whose halves differ emits both a foreground and a background code', () => {
+	// Red over green, so the two halves are not the same and the renderer takes
+	// the upper half block branch instead.
+	const src = solid(2, 2, [0, 0, 0, 255]);
+	src.data[1] = 255;   // top left green
+	src.data[8] = 255;   // bottom left green, leaving red over green
+	const d = dither(flatten(src, [0, 0, 0] as RGB), 2, 2, rgbCube(4), 'none');
+	const out = render(d, { mode: 'color', color: true, invert: false });
+
+	assert.match(out, /\x1b\[38;2;\d+;\d+;\d+m/);
+	assert.match(out, /\x1b\[48;2;\d+;\d+;\d+m/);
+	assert.doesNotMatch(strayBrackets(out), /\[/);
+});
+
+test('every bracket in colour output belongs to a well-formed escape', () => {
+	const w = 16, h = 16;
+	const rgb = new Float32Array(w * h * 3);
+	for (let i = 0; i < w * h; i++) {
+		rgb[i * 3] = (i * 17) % 256;
+		rgb[i * 3 + 1] = (i * 29) % 256;
+		rgb[i * 3 + 2] = (i * 43) % 256;
+	}
+	const d = dither(Float32Array.from(rgb), w, h, rgbCube(4), 'floyd');
+	const out = render(d, { mode: 'color', color: true, invert: false });
+
+	// A noisy image drives every branch: unchanged colours, changed colours, the
+	// solid block, and the reset at the end.
+	assert.ok(strayBrackets(out).length > 0, 'expected some drawn content');
+	assert.doesNotMatch(strayBrackets(out), /\[/);
 });
 
 test('an odd pixel height still renders without throwing', () => {
