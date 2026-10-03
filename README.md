@@ -2,68 +2,81 @@
 
 Turns a PNG into terminal art, with colour dithering.
 
-```
-$ ansidither plasma.png -w 60
+```sh
+$ node src/cli.ts plasma.png -w 60
 ```
 
-No dependencies. PNG decoding is built on Node's own `zlib`, so this is a
-`git clone` and go — no `node_modules`, no build step, nothing to compile.
-
-Node 22.15 or newer is required either way; that is the version that can
-strip TypeScript types from a `node_modules` install.
+No dependencies. PNG decoding is built on Node's own `zlib`, so there is
+nothing to install and nothing to compile: no `node_modules`, no build step.
+The CLI is TypeScript run directly, so it needs a Node with built-in type
+stripping — a recent Node 22 or newer. `package.json` declares the supported
+range in `engines`; the commands below are verified on Node 26.
 
 ## Install
 
-From a checkout, run the CLI in place:
+ansidither is not published to npm, so there is nothing to install globally
+yet. Clone the repo and run the CLI in place:
 
 ```sh
-./src/cli.ts image.png
+git clone https://github.com/maybecooldev/ansidither.git
+cd ansidither
+node src/cli.ts image.png
 ```
 
-Or install it as a command from that checkout:
+`src/cli.ts` carries a `#!/usr/bin/env node` shebang and is committed with the
+executable bit set, so `./src/cli.ts` works from a fresh clone too. The
+`node src/cli.ts` form above is kept because it works regardless of how the
+file was copied or unpacked.
 
-```sh
-npm install -g .
-ansidither image.png
-```
+Node 22.15 or newer is required. `npm install -g .` also installs an
+`ansidither` command: a small JavaScript launcher that hands `src/cli.ts` to
+Node's own type stripper. Node prints an `ExperimentalWarning` about that API
+on each run; it is noise from Node, not a failure, and the exit code is
+unaffected.
 
-There is still nothing to build: the installed `ansidither` is a small
-JavaScript launcher that hands `src/cli.ts` to Node's own type stripper. Node
-prints an `ExperimentalWarning` about that API on each run; it is noise from
-Node, not a failure, and the exit code is unaffected.
-
-## Why half-blocks
-
-Colour mode draws with `▀` (UPPER HALF BLOCK), which paints the foreground
-colour in the top half of a cell and the background in the bottom. That packs
-two vertical pixels into one character, and because terminal cells are about
-twice as tall as they are wide, a square image needs half as many rows as
-columns. The aspect ratio comes out right without any fudge factor.
+There is no `npm install` step for running the tests: the package has no
+dependencies, so `npm test` runs straight from a clean checkout.
 
 ## Use
 
 ```sh
-ansidither image.png                      # 80 columns, colour, Floyd-Steinberg
-ansidither image.png -w 120               # wider
-ansidither image.png -h 40                # force a row count
-ansidither image.png -m ascii             # no colour, for logs and plain text
-ansidither image.png -d atkinson          # grainier, keeps local contrast
-ansidither image.png -d none              # flat quantisation, no error diffusion
-ansidither image.png -g -l 8              # grayscale, 8 levels
-ansidither image.png -b 1a1a1a -i         # composite on light grey, inverted
-ansidither image.png -o out.txt           # write to a file
+node src/cli.ts image.png                      # 80 columns, colour, Floyd-Steinberg
+node src/cli.ts image.png -w 120               # wider
+node src/cli.ts image.png -h 40                # force a row count
+node src/cli.ts image.png -m ascii             # no colour, for logs and plain text
+node src/cli.ts image.png -d atkinson          # grainier, keeps local contrast
+node src/cli.ts image.png -d none              # flat quantisation, no error diffusion
+node src/cli.ts image.png -g -l 8              # grayscale, 8 levels
+node src/cli.ts image.png -b 1a1a1a -i         # composite on light grey, inverted
+node src/cli.ts image.png -o out.txt           # write to a file
 ```
 
 `--no-color` forces plain output. `--invert` is for terminals with a light
 background, where the default ramp reads backwards.
 
-`-l` takes a palette size between **2 and 6** in colour (default 4, so 64
-colours) and between **2 and 256** in grayscale (default 6). The colour bound is
-not arbitrary: the palette is indexed through a byte per pixel, so a larger cube
-would wrap around and quietly paint the wrong colours, and each extra level also
-costs a full palette scan per pixel. Grayscale gets a much higher ceiling
-because its palette is a single ramp rather than a cube. Anything outside those
-ranges is rejected rather than clamped, so a typo is never silently ignored.
+### Levels
+
+`-l` sets the palette size, and the two modes accept different ranges:
+
+| Mode | Accepted | Default |
+|---|---|---|
+| Colour (`levels` cubed, so `-l 6` is 216 colours) | 2-6 | 4 |
+| Grayscale (`-g`, or `-m ascii`) | 2-256 | 6 |
+
+Colour is bounded at 6 because the palette is stored as one byte per pixel, so
+7 or more silently overflows it and produces wrong colours rather than an
+error. Grayscale takes a much wider range because a ramp is a single channel.
+
+Anything outside those ranges, or a non-integer like `-l 5.5`, is rejected with
+a clear error and a non-zero exit rather than being clamped or rendered.
+
+## Why half-blocks
+
+Colour mode draws with `█` (UPPER HALF BLOCK), which paints the foreground
+colour in the top half of a cell and the background in the bottom. That packs
+two vertical pixels into one character, and because terminal cells are about
+twice as tall as they are wide, a square image needs half as many rows as
+columns. The aspect ratio comes out right without any fudge factor.
 
 ## Dithering
 
@@ -74,16 +87,18 @@ error diffusion reconstructs the rest.
 | Method | Behaviour |
 |---|---|
 | `floyd` | Floyd-Steinberg. The default; smooth, slightly soft. |
-| `atkinson` | Discards a third of the error each step. Sharper and grainier, never smears. |
+| `atkinson` | Discards a quarter of the error each step. Sharper and grainier, never smears. |
 | `ordered` | Bayer 8x8 threshold matrix. Fast, regular, no error accumulation. |
 | `none` | Straight nearest colour. Bands visibly, but produces the smallest output. |
 
-Dithering costs bytes. A 60-column image is roughly 32 KB with `floyd` and
-8 KB with `none`, because error diffusion makes neighbouring cells differ and
-each colour change emits a new escape sequence. Escape codes are only written
-when the colour actually changes, and a cell whose top and bottom halves are
-the same colour collapses to one code, but a heavily dithered image will still
-be verbose. If size matters more than smoothness, use `none` or `ordered`.
+Dithering costs bytes, and how much depends heavily on the image: measured at
+60 columns, `floyd` produced 40 KB for a smooth image and 51 KB for a noisy
+one, while `none` gave 18 KB and 45 KB for the same two. Error diffusion makes
+neighbouring cells differ, and each colour change emits a new escape sequence.
+Escape codes are only written when the colour actually changes, and a cell
+whose top and bottom halves are the same colour collapses to one code, but a
+heavily dithered image will still be verbose. If size matters more than
+smoothness, use `none` or `ordered`.
 
 ## PNG support
 
@@ -109,9 +124,7 @@ and rendering in both modes.
 
 The PNG fixtures are built in code by `test/png-builder.ts` rather than
 committed as binaries, so each test can state exactly the colour type, bit depth
-and filter it wants, and the repository stays free of opaque blobs. The filter
-tests hand-check the arithmetic by hand, including the Paeth case where the
-predictor picks the pixel above rather than the one to the left.
+and filter it wants, and the repository stays free of opaque blobs.
 
 `test/cli.test.ts` spawns the real binary rather than importing it, so it covers
 the flag parsing and exit codes end to end — the levels bounds above are all
