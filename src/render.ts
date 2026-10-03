@@ -18,6 +18,13 @@ export type Mode = 'color' | 'ascii';
 /** Light to dark, for a terminal with a dark background. */
 const RAMP = ' .:-=+*#%@';
 
+/**
+ * The escape byte, spelled as a sequence on purpose. A raw 0x1b pasted into
+ * the source is invisible in a diff and in review, which is how three of the
+ * colour codes below quietly lost theirs.
+ */
+const ESC = '\x1b';
+
 export type RenderOptions = {
 	mode: Mode;
 	color: boolean;
@@ -70,23 +77,23 @@ export function render(d: Dithered, options: RenderOptions): string {
 				// two. Dithering makes this the common case, so it roughly
 				// halves the output size.
 				if (fgKey !== lastBg) {
-					out += `[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
+					out += `${ESC}[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
 					lastBg = fgKey;
 				}
 				// The foreground is still set from the previous cell; reset it
 				// so it cannot bleed into the next one.
-				out += '[39m';
+				out += `${ESC}[39m`;
 				lastFg = '';
 				parts.push(`${out}█`);
 				continue;
 			}
 
 			if (fgKey !== lastFg) {
-				out += `[38;2;${fg[0]};${fg[1]};${fg[2]}m`;
+				out += `${ESC}[38;2;${fg[0]};${fg[1]};${fg[2]}m`;
 				lastFg = fgKey;
 			}
 			if (bgKey !== lastBg) {
-				out += `[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
+				out += `${ESC}[48;2;${bg[0]};${bg[1]};${bg[2]}m`;
 				lastBg = bgKey;
 			}
 			parts.push(`${out}▀`);
@@ -98,7 +105,7 @@ export function render(d: Dithered, options: RenderOptions): string {
 	// Close whatever the last cell left open. Ascii mode never emits colour,
 	// so there is nothing to reset.
 	const needsReset = options.color && options.mode === 'color';
-	return needsReset ? `${lines.join('\n')}[0m` : lines.join('\n');
+	return needsReset ? `${lines.join('\n')}${ESC}[0m` : lines.join('\n');
 }
 
 function luma(r: number, g: number, b: number): number {
