@@ -29,7 +29,9 @@ export function rgbCube(levels: number): Palette {
 	for (let r = 0; r < levels; r++) {
 		for (let g = 0; g < levels; g++) {
 			for (let b = 0; b < levels; b++) {
-				colors.push([r * step, g * step, b * step]);
+				// Round, so an odd level count cannot leak a fractional channel
+				// into an SGR sequence, which terminals reject or misparse.
+				colors.push([Math.round(r * step), Math.round(g * step), Math.round(b * step)]);
 			}
 		}
 	}
