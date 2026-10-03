@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # `npm test` passes a directory to `node --test`, which only works on
+          # Node >=26.8 or <=20. Since 21 it tried to run the directory as a
+          # file (MODULE_NOT_FOUND) until 26.8.0 restored directory search.
+          # 24.x is the current LTS line; it satisfies the engines floor and
+          # stays clear of the unfixed 21-26.7 window.
+          node-version: 24
+      - run: npm install
+      - run: npm test
